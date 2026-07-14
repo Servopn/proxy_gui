@@ -4,29 +4,6 @@ Windows 本地 Claude/Anthropic 兼容代理，提供系统托盘、日志窗口
 
 服务默认只监听 `127.0.0.1:18081`，并将请求转发到讯飞 MaaS Anthropic 兼容接口。
 
-## 配置
-
-复制示例配置并填写现有渠道密钥：
-
-```powershell
-Copy-Item .env.example .env
-```
-
-`.env` 包含真实密钥，已被 `.gitignore` 忽略，不要提交到版本库。程序启动时要求 `.env` 与脚本或打包后的 EXE 位于同一目录。
-
-## 使用 uv 运行
-
-```powershell
-uv sync
-uv run python claude_proxy_gui.py
-```
-
-指定端口：
-
-```powershell
-uv run python claude_proxy_gui.py --port 18082
-```
-
 ## 构建 EXE
 
 仓库中的 `claude.ico` 会同时作为 EXE 文件图标。运行：
