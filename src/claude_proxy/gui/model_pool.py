@@ -158,23 +158,32 @@ class ModelPoolConfigWindow:
 def _write_env_pool_key(models):
     """将模型池配置持久化到 .env 文件"""
     if not ENV_FILE.exists():
+        log("持久化: .env 文件不存在，跳过写入")
         return
     value = ",".join(models)
-    existing_lines = ENV_FILE.read_text(encoding="utf-8-sig").splitlines()
-    # 移除旧的 _ENV_POOL_KEY 行
-    kept = [line for line in existing_lines
-            if not line.lstrip().startswith(_ENV_POOL_KEY + "=")]
-    kept.append(f"{_ENV_POOL_KEY}={value}")
-    ENV_FILE.write_text("\n".join(kept) + "\n", encoding="utf-8")
-    os.environ[_ENV_POOL_KEY] = value
+    try:
+        existing_lines = ENV_FILE.read_text(encoding="utf-8-sig").splitlines()
+        # 移除旧的 _ENV_POOL_KEY 行
+        kept = [line for line in existing_lines
+                if not line.lstrip().startswith(_ENV_POOL_KEY + "=")]
+        kept.append(f"{_ENV_POOL_KEY}={value}")
+        ENV_FILE.write_text("\n".join(kept) + "\n", encoding="utf-8")
+        os.environ[_ENV_POOL_KEY] = value
+        log(f"持久化: 模型池配置已写入 .env")
+    except OSError as e:
+        log(f"持久化: 写入 .env 失败 - {e}")
+        messagebox.showwarning("写入失败", f"无法写入 .env 文件，请检查文件权限。\n{e}")
 
 
 def _remove_env_pool_key():
     """从 .env 中删除模型池配置（恢复默认时调用）"""
     if not ENV_FILE.exists():
         return
-    existing_lines = ENV_FILE.read_text(encoding="utf-8-sig").splitlines()
-    kept = [line for line in existing_lines
-            if not line.lstrip().startswith(_ENV_POOL_KEY + "=")]
-    ENV_FILE.write_text("\n".join(kept) + "\n", encoding="utf-8")
-    os.environ.pop(_ENV_POOL_KEY, None)
+    try:
+        existing_lines = ENV_FILE.read_text(encoding="utf-8-sig").splitlines()
+        kept = [line for line in existing_lines
+                if not line.lstrip().startswith(_ENV_POOL_KEY + "=")]
+        ENV_FILE.write_text("\n".join(kept) + "\n", encoding="utf-8")
+        os.environ.pop(_ENV_POOL_KEY, None)
+    except OSError:
+        pass
