@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+主日志窗口：统计卡片、实时日志、控制开关与各子窗口入口。
+"""
+
+import queue
+import tkinter as tk
+from tkinter import ttk, scrolledtext
+
+from claude_proxy import config
+from claude_proxy.config import (
+    DEFAULT_MAX_RETRY_CHANNELS,
+    FORCE_PROXY_AUTO,
+    set_force_proxy_auto,
+    set_max_retry_channels,
+)
+from claude_proxy.logger import log_queue
+from claude_proxy.proxy import stop_proxy
+from claude_proxy.startup import _release_startup_lock
+from claude_proxy.stats import pool
+
+
+class LogWindow:
+    def __init__(self, root, port):
+        self.root = root
+        self.root.title("Claude Proxy")
+        self.root.geometry("1050x700")
+        self.root.minsize(800, 500)
+        self.root.protocol("WM_DELETE_WINDOW", self.hide)
+
+        # 全局样式
+        style = ttk.Style()
+        style.configure(".", font=("Microsoft YaHei UI", 9))
+        style.configure("Header.TLabel", font=("Microsoft YaHei UI", 16, "bold"))
+        style.configure("Stats.TLabel", font=("Microsoft YaHei UI", 10))
+        style.configure("Card.TFrame", relief="flat", borderwidth=0)
+        style.configure("Btn.TButton", font=("Microsoft YaHei UI", 9), padding=6)
+
+        # 顶部标题栏
+        header = ttk.Frame(root)
+        header.pack(fill=tk.X, padx=12, pady=(10, 0))
+        ttk.Label(header, text="Claude Proxy", style="Header.TLabel").pack(side=tk.LEFT)
+        ttk.Label(header, text=f"Port {port}", style="Stats.TLabel").pack(side=tk.LEFT, padx=10)
+
+        # 统计卡片行
+        stats_card = ttk.Frame(root, relief="groove", borderwidth=1)
+        stats_card.pack(fill=tk.X, padx=12, pady=8)
+
+        card_inner = ttk.Frame(stats_card)
+        card_inner.pack(fill=tk.X, padx=10, pady=10)
+
+        self.lbl_requests = ttk.Label(card_inner, text="0", font=("Microsoft YaHei UI", 18, "bold"))
+        self.lbl_requests.pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Label(card_inner, text="请求  ", font=("Microsoft YaHei UI", 8)).pack(side=tk.LEFT, padx=(0, 16))
+
+        self.lbl_errors = ttk.Label(card_inner, text="0", font=("Microsoft YaHei UI", 18, "bold"), foreground="#e74c3c")
+        self.lbl_errors.pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Label(card_inner, text="错误  ", font=("Microsoft YaHei UI", 8)).pack(side=tk.LEFT, padx=(0, 16))
+
+        self.lbl_input = ttk.Label(card_inner, text="0", font=("Microsoft YaHei UI", 18, "bold"))
+        self.lbl_input.pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Label(card_inner, text="Input Token  ", font=("Microsoft YaHei UI", 8)).pack(side=tk.LEFT, padx=(0, 16))
+
+        self.lbl_output = ttk.Label(card_inner, text="0", font=("Microsoft YaHei UI", 18, "bold"))
+        self.lbl_output.pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Label(card_inner, text="Output Token  ", font=("Microsoft YaHei UI", 8)).pack(side=tk.LEFT, padx=(0, 16))
+
+        self.lbl_channels = ttk.Label(card_inner, text=str(len(config.CHANNELS)), font=("Microsoft YaHei UI", 18, "bold"))
+        self.lbl_channels.pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Label(card_inner, text="渠道  ", font=("Microsoft YaHei UI", 8)).pack(side=tk.LEFT, padx=(0, 16))
+
+        self.lbl_mode = ttk.Label(card_inner, text="-", font=("Microsoft YaHei UI", 18, "bold"))
+        self.lbl_mode.pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Label(card_inner, text="模式", font=("Microsoft YaHei UI", 8)).pack(side=tk.LEFT)
+
+        # 控制栏
+        ctrl_bar = ttk.Frame(root)
+        ctrl_bar.pack(fill=tk.X, padx=12, pady=4)
+
+        self.log_title = ttk.Label(ctrl_bar, text="实时日志", font=("Microsoft YaHei UI", 11, "bold"))
+        self.log_title.pack(side=tk.LEFT)
+
+        retry_frame = ttk.Frame(ctrl_bar)
+        retry_frame.pack(side=tk.RIGHT, padx=10)
+        ttk.Label(retry_frame, text="503重试:", font=("Microsoft YaHei UI", 9)).pack(side=tk.LEFT, padx=(0, 4))
+        self.retry_var = tk.StringVar(value=str(DEFAULT_MAX_RETRY_CHANNELS))
+        self.retry_spin = ttk.Spinbox(retry_frame, from_=1, to=len(config.CHANNELS), width=4,
+                                      textvariable=self.retry_var, command=self._on_retry_change)
+        self.retry_spin.pack(side=tk.LEFT, padx=2)
+        ttk.Label(retry_frame, text=f"/{len(config.CHANNELS)}", font=("Microsoft YaHei UI", 9)).pack(side=tk.LEFT)
+
+        # 强制 ProxyAuto 开关
+        auto_frame = ttk.Frame(ctrl_bar)
+        auto_frame.pack(side=tk.RIGHT, padx=10)
+        self.force_auto_var = tk.BooleanVar(value=FORCE_PROXY_AUTO)
+        self.force_auto_check = ttk.Checkbutton(
+            auto_frame, text="强制ProxyAuto", variable=self.force_auto_var,
+            command=self._on_force_auto_change
+        )
+        self.force_auto_check.pack(side=tk.LEFT)
+
+        # 日志区域
+        log_frame = ttk.Frame(root, relief="sunken", borderwidth=1)
+        log_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=4)
+        self.log_text = scrolledtext.ScrolledText(log_frame, wrap=tk.WORD,
+                                                   font=('Cascadia Code', 9),
+                                                   bg="#1e1e1e", fg="#d4d4d4",
+                                                   insertbackground="white",
+                                                   selectbackground="#264f78")
+        self.log_text.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+        self.log_text.tag_config("error", foreground="#f44747")
+        self.log_text.tag_config("success", foreground="#4ec9b0")
+        self.log_text.tag_config("retry", foreground="#ce9178")
+        self.log_text.tag_config("info", foreground="#569cd6")
+
+        # 底部按钮
+        self.btn_frame = ttk.Frame(root)
+        self.btn_frame.pack(fill=tk.X, padx=12, pady=6)
+
+        ttk.Button(self.btn_frame, text="清空日志", command=self.clear_log, style="Btn.TButton").pack(side=tk.LEFT, padx=3)
+        ttk.Button(self.btn_frame, text="隐藏到托盘", command=self.hide, style="Btn.TButton").pack(side=tk.LEFT, padx=3)
+        ttk.Button(self.btn_frame, text="密钥管理", command=self.open_key_manager, style="Btn.TButton").pack(side=tk.LEFT, padx=3)
+        ttk.Button(self.btn_frame, text="排名面板", command=self.open_ranking, style="Btn.TButton").pack(side=tk.LEFT, padx=3)
+        ttk.Button(self.btn_frame, text="系统配置", command=self.open_config, style="Btn.TButton").pack(side=tk.LEFT, padx=3)
+        ttk.Button(self.btn_frame, text="退出",  command=self.quit_app, style="Btn.TButton").pack(side=tk.RIGHT, padx=3)
+
+        self.visible = False
+        self.running = True
+        self.log_line_count = 0
+        self.update_log()
+
+    def show(self):
+        self.visible = True
+        self.root.deiconify()
+        self.root.lift()
+        self.root.focus_force()
+
+    def hide(self):
+        self.visible = False
+        self.root.withdraw()
+
+    def quit_app(self):
+        self.running = False
+        from claude_proxy.tray import tray_icon
+        if tray_icon is not None:
+            try:
+                tray_icon.stop()
+            except Exception:
+                pass
+            from claude_proxy import tray
+            tray.tray_icon = None
+        stop_proxy()
+        _release_startup_lock()
+        self.root.quit()
+        self.root.destroy()
+
+    def clear_log(self):
+        self.log_text.delete(1.0, tk.END)
+
+    def _on_retry_change(self):
+        """503 重试渠道数改变时的回调"""
+        try:
+            new_size = int(self.retry_var.get())
+            set_max_retry_channels(new_size)
+        except ValueError:
+            pass
+
+    def _on_force_auto_change(self):
+        """强制 ProxyAuto 模式开关改变时的回调"""
+        enabled = self.force_auto_var.get()
+        set_force_proxy_auto(enabled)
+
+    def open_key_manager(self):
+        """打开密钥管理窗口"""
+        from claude_proxy.gui.key_manager import KeyManagerWindow
+        KeyManagerWindow(self.root)
+
+    def open_ranking(self):
+        """打开排名面板"""
+        from claude_proxy.gui.ranking import RankingWindow
+        RankingWindow(self.root)
+
+    def open_config(self):
+        """打开系统配置窗口"""
+        from claude_proxy.gui.config_window import ConfigWindow
+        ConfigWindow(self.root)
+
+    def update_log(self):
+        """从队列读取日志并显示"""
+        if not self.running:
+            return
+
+        try:
+            while True:
+                line = log_queue.get_nowait()
+                if line:
+                    self.log_text.insert(tk.END, line + "\n")
+                    # VS Code 风格着色
+                    if "REQ" in line:
+                        self.log_text.tag_add("info", f"{self.log_text.index(tk.END)}-1l", f"{self.log_text.index(tk.END)}-1l+1l")
+                    elif "OK" in line:
+                        self.log_text.tag_add("success", f"{self.log_text.index(tk.END)}-1l", f"{self.log_text.index(tk.END)}-1l+1l")
+                    elif "ERR" in line or "403" in line or "500" in line:
+                        self.log_text.tag_add("error", f"{self.log_text.index(tk.END)}-1l", f"{self.log_text.index(tk.END)}-1l+1l")
+                    elif "503" in line or "retry" in line or "429" in line:
+                        self.log_text.tag_add("retry", f"{self.log_text.index(tk.END)}-1l", f"{self.log_text.index(tk.END)}-1l+1l")
+                    elif "TEST" in line:
+                        self.log_text.tag_add("info", f"{self.log_text.index(tk.END)}-1l", f"{self.log_text.index(tk.END)}-1l+1l")
+
+                    self.log_text.see(tk.END)
+
+                    # 限制行数，避免每条日志都复制整个文本框内容。
+                    self.log_line_count += 1
+                    if self.log_line_count > 1000:
+                        self.log_text.delete(1.0, "2.0")
+                        self.log_line_count -= 1
+        except queue.Empty:
+            pass
+
+        # 更新统计
+        try:
+            stats = pool.get_stats()
+            self.lbl_requests.config(text=str(stats['total_requests']))
+            self.lbl_errors.config(text=str(stats['total_errors']))
+            self.lbl_input.config(text=str(stats['total_input_tokens']))
+            self.lbl_output.config(text=str(stats['total_output_tokens']))
+            self.lbl_channels.config(text=str(len(config.CHANNELS)))
+            mode_text = "评分" if stats['mode'] == 'scoring' else "轮询"
+            self.lbl_mode.config(text=mode_text,
+                               foreground="#27ae60" if stats['mode'] == 'scoring' else "#2980b9")
+        except (KeyError, tk.TclError):
+            pass
+
+        self.root.after(100, self.update_log)

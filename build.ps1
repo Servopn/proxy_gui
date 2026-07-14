@@ -15,6 +15,7 @@ uv run pyinstaller `
     --windowed `
     --name ClaudeProxyGUI `
     --icon claude.ico `
+    --paths src `
     --collect-all ttkthemes `
     --hidden-import pystray._win32 `
     --hidden-import win32timezone `
