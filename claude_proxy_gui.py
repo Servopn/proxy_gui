@@ -83,6 +83,54 @@ DEFAULT_MAX_POOL_SIZE = 10
 MAX_POOL_SIZE = DEFAULT_MAX_POOL_SIZE
 CONNECTION_TIMEOUT = 300.0
 
+# 防止重复启动的文件锁
+_LOCK_FILE = None
+
+
+def _acquire_startup_lock():
+    """获取启动锁，防止重复启动多个实例"""
+    global _LOCK_FILE
+    import tempfile
+    lock_path = os.path.join(tempfile.gettempdir(), "claude_proxy_gui.lock")
+    try:
+        # 如果文件已存在，说明已有实例在运行
+        if os.path.exists(lock_path):
+            # 检查对应的进程是否还在运行
+            try:
+                with open(lock_path, "r") as f:
+                    pid_str = f.read().strip()
+                    if pid_str:
+                        pid = int(pid_str)
+                        # 检查进程是否存在
+                        import ctypes
+                        kernel = ctypes.windll.kernel32
+                        handle = kernel.OpenProcess(1, False, pid)  # 1 = PROCESS_TERMINATE
+                        if handle:
+                            kernel.CloseHandle(handle)
+                            return False  # 进程仍在运行
+            except (ValueError, OSError):
+                pass
+
+        # 写入当前进程PID
+        with open(lock_path, "w") as f:
+            f.write(str(os.getpid()))
+        _LOCK_FILE = lock_path
+        return True
+    except OSError:
+        return False
+
+
+def _release_startup_lock():
+    """释放启动锁"""
+    global _LOCK_FILE
+    if _LOCK_FILE and os.path.exists(_LOCK_FILE):
+        try:
+            os.remove(_LOCK_FILE)
+        except OSError:
+            pass
+        _LOCK_FILE = None
+
+
 _conn_pool = []
 _conn_lock = threading.Lock()
 
@@ -167,7 +215,20 @@ def set_max_pool_size(size):
     log(f"连接池大小已设置为: {MAX_POOL_SIZE}")
 
 
-def get_max_pool_size():
+# 强制 ProxyAuto 模式开关（全局）
+FORCE_PROXY_AUTO = False
+
+
+def set_force_proxy_auto(enabled):
+    """设置是否强制使用 ProxyAuto 模式"""
+    global FORCE_PROXY_AUTO
+    FORCE_PROXY_AUTO = bool(enabled)
+    log(f"强制 ProxyAuto 模式: {'开启' if FORCE_PROXY_AUTO else '关闭'}")
+
+
+def get_force_proxy_auto():
+    """获取当前是否强制使用 ProxyAuto 模式"""
+    return FORCE_PROXY_AUTO
     return MAX_POOL_SIZE
 
 
@@ -920,7 +981,12 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             is_auto_model = False
             if data is not None and "model" in data:
                 original_model = data["model"]
-                if isinstance(original_model, str) and original_model.lower() in (
+                # 检查是否强制启用 ProxyAuto 模式
+                if FORCE_PROXY_AUTO:
+                    is_auto_model = True
+                    data["model"] = model_pool.get_model()
+                    log(f"FORCE_AUTO model={original_model}->{data['model']}")
+                elif isinstance(original_model, str) and original_model.lower() in (
                     "proxyautomodel", "proxy-auto-model", "auto_model"
                 ):
                     is_auto_model = True
@@ -1145,6 +1211,16 @@ class LogWindow:
         self.retry_spin.pack(side=tk.LEFT, padx=2)
         ttk.Label(retry_frame, text=f"/{len(CHANNELS)}", font=("Microsoft YaHei UI", 9)).pack(side=tk.LEFT)
 
+        # 强制 ProxyAuto 开关
+        auto_frame = ttk.Frame(ctrl_bar)
+        auto_frame.pack(side=tk.RIGHT, padx=10)
+        self.force_auto_var = tk.BooleanVar(value=FORCE_PROXY_AUTO)
+        self.force_auto_check = ttk.Checkbutton(
+            auto_frame, text="强制ProxyAuto", variable=self.force_auto_var,
+            command=self._on_force_auto_change
+        )
+        self.force_auto_check.pack(side=tk.LEFT)
+
         # 日志区域
         log_frame = ttk.Frame(root, relief="sunken", borderwidth=1)
         log_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=4)
@@ -1195,6 +1271,7 @@ class LogWindow:
                 pass
             tray_icon = None
         stop_proxy()
+        _release_startup_lock()
         self.root.quit()
         self.root.destroy()
 
@@ -1208,6 +1285,11 @@ class LogWindow:
             set_max_retry_channels(new_size)
         except ValueError:
             pass
+
+    def _on_force_auto_change(self):
+        """强制 ProxyAuto 模式开关改变时的回调"""
+        enabled = self.force_auto_var.get()
+        set_force_proxy_auto(enabled)
 
     def open_key_manager(self):
         """打开密钥管理窗口"""
@@ -1336,7 +1418,6 @@ class KeyManagerWindow:
 
         # 刷新按钮
         ttk.Button(self.tab_current, text="刷新", command=self._refresh_current_keys).pack(pady=5)
-        ttk.Button(self.tab_current, text="一键测试当前密钥", command=self._test_current_keys).pack(pady=5)
 
         self._refresh_current_keys()
 
@@ -1367,7 +1448,7 @@ class KeyManagerWindow:
                     "User-Agent": "claude-proxy/2.0",
                 }
                 body = json.dumps({
-                    "model": "xopdeepseekv4pro",
+                    "model": "xopkimik26",
                     "messages": [{"role": "user", "content": "Hello"}],
                     "max_tokens": 5,
                 }).encode("utf-8")
@@ -1389,6 +1470,7 @@ class KeyManagerWindow:
         progress_window = tk.Toplevel(self.window)
         progress_window.title("测试进度")
         progress_window.geometry("400x110")
+        _center_window(progress_window)
         progress_window.transient(self.window)
         progress_window.protocol("WM_DELETE_WINDOW", lambda: None)
         progress_label = ttk.Label(progress_window, text="正在测试密钥...")
@@ -1423,6 +1505,7 @@ class KeyManagerWindow:
             result_window = tk.Toplevel(self.window)
             result_window.title("测试结果")
             result_window.geometry("600x400")
+            _center_window(result_window)
             text = scrolledtext.ScrolledText(result_window, font=("Consolas", 9))
             text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
             text.insert(tk.END, "\n".join(sorted(results)))
@@ -2204,20 +2287,19 @@ def main():
     parser.add_argument("--port", type=int, default=18081)
     args = parser.parse_args()
 
+    # 先检查是否有其他实例在运行
+    if not _acquire_startup_lock():
+        # 已有实例在运行，尝试激活已有窗口，静默退出
+        time.sleep(0.3)
+        find_existing_window()
+        return
+
     port_check = check_port_and_handle(args.port)
     if port_check == "duplicate":
-        time.sleep(0.5)
-        success = find_existing_window()
-        dialog_root = tk.Tk()
-        dialog_root.withdraw()
-        message = (
-            f"代理已在端口 {args.port} 运行，已显示日志窗口。"
-            if success else f"代理已在端口 {args.port} 运行。"
-        )
-        messagebox.showinfo("Claude Proxy", message)
-        dialog_root.destroy()
+        _release_startup_lock()
         return
     if port_check == "exit":
+        _release_startup_lock()
         return
 
     try:
