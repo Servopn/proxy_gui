@@ -189,4 +189,10 @@ DEFAULT_AUTO_MODEL_POOL = [
     "xop3qwencodernext",
 ]
 
-AUTO_MODEL_POOL = list(DEFAULT_AUTO_MODEL_POOL)
+# 从 .env 读取持久化的模型池配置，如果没有则用默认值
+_ENV_POOL_KEY = "CLAUDE_PROXY_AUTO_MODEL_POOL"
+_env_pool_raw = os.environ.get(_ENV_POOL_KEY, "")
+if _env_pool_raw:
+    AUTO_MODEL_POOL = [m.strip() for m in _env_pool_raw.split(",") if m.strip()]
+else:
+    AUTO_MODEL_POOL = list(DEFAULT_AUTO_MODEL_POOL)

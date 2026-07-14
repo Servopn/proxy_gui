@@ -2,13 +2,17 @@
 # -*- coding: utf-8 -*-
 """模型池配置窗口：配置 ProxyAutoModel 参与的模型。"""
 
+import os
+
 import tkinter as tk
 from tkinter import ttk, messagebox
 
 from claude_proxy.config import (
     DEFAULT_AUTO_MODEL_POOL,
+    ENV_FILE,
     MODEL_FRIENDLY_NAMES,
     USER_MODEL_LIST,
+    _ENV_POOL_KEY,
 )
 from claude_proxy.gui.utils import _center_window
 from claude_proxy.logger import log
@@ -126,6 +130,8 @@ class ModelPoolConfigWindow:
         for m in DEFAULT_AUTO_MODEL_POOL:
             friendly = MODEL_FRIENDLY_NAMES.get(m, m)
             self.pool_listbox.insert(tk.END, friendly)
+        # 从 .env 中删除持久化配置，下次启动用默认池
+        _remove_env_pool_key()
 
     def _apply(self):
         # 将友好名称转换回讯飞ID
@@ -142,6 +148,33 @@ class ModelPoolConfigWindow:
         # 同步全局变量
         from claude_proxy import config
         config.AUTO_MODEL_POOL = list(models)
+        # 持久化到 .env
+        _write_env_pool_key(models)
         log(f"ProxyAutoModel 模型池已更新: {', '.join(models)}")
         messagebox.showinfo("成功", f"模型池已更新，共 {len(models)} 个模型")
         self.window.destroy()
+
+
+def _write_env_pool_key(models):
+    """将模型池配置持久化到 .env 文件"""
+    if not ENV_FILE.exists():
+        return
+    value = ",".join(models)
+    existing_lines = ENV_FILE.read_text(encoding="utf-8-sig").splitlines()
+    # 移除旧的 _ENV_POOL_KEY 行
+    kept = [line for line in existing_lines
+            if not line.lstrip().startswith(_ENV_POOL_KEY + "=")]
+    kept.append(f"{_ENV_POOL_KEY}={value}")
+    ENV_FILE.write_text("\n".join(kept) + "\n", encoding="utf-8")
+    os.environ[_ENV_POOL_KEY] = value
+
+
+def _remove_env_pool_key():
+    """从 .env 中删除模型池配置（恢复默认时调用）"""
+    if not ENV_FILE.exists():
+        return
+    existing_lines = ENV_FILE.read_text(encoding="utf-8-sig").splitlines()
+    kept = [line for line in existing_lines
+            if not line.lstrip().startswith(_ENV_POOL_KEY + "=")]
+    ENV_FILE.write_text("\n".join(kept) + "\n", encoding="utf-8")
+    os.environ.pop(_ENV_POOL_KEY, None)
