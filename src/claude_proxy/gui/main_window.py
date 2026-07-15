@@ -121,7 +121,8 @@ class LogWindow:
         ttk.Button(self.btn_frame, text="清空日志", command=self.clear_log, style="Btn.TButton").pack(side=tk.LEFT, padx=3)
         ttk.Button(self.btn_frame, text="隐藏到托盘", command=self.hide, style="Btn.TButton").pack(side=tk.LEFT, padx=3)
         ttk.Button(self.btn_frame, text="密钥管理", command=self.open_key_manager, style="Btn.TButton").pack(side=tk.LEFT, padx=3)
-        ttk.Button(self.btn_frame, text="排名面板", command=self.open_ranking, style="Btn.TButton").pack(side=tk.LEFT, padx=3)
+        ttk.Button(self.btn_frame, text="渠道状态", command=self.open_channel_status, style="Btn.TButton").pack(side=tk.LEFT, padx=3)
+        ttk.Button(self.btn_frame, text="ProxyAuto", command=self.open_proxy_auto, style="Btn.TButton").pack(side=tk.LEFT, padx=3)
         ttk.Button(self.btn_frame, text="系统配置", command=self.open_config, style="Btn.TButton").pack(side=tk.LEFT, padx=3)
         ttk.Button(self.btn_frame, text="退出",  command=self.quit_app, style="Btn.TButton").pack(side=tk.RIGHT, padx=3)
 
@@ -176,10 +177,15 @@ class LogWindow:
         from claude_proxy.gui.key_manager import KeyManagerWindow
         KeyManagerWindow(self.root)
 
-    def open_ranking(self):
-        """打开排名面板"""
-        from claude_proxy.gui.ranking import RankingWindow
-        RankingWindow(self.root)
+    def open_channel_status(self):
+        """打开渠道状态窗口"""
+        from claude_proxy.gui.channel_status import ChannelStatusWindow
+        ChannelStatusWindow(self.root)
+
+    def open_proxy_auto(self):
+        """打开ProxyAuto设置窗口"""
+        from claude_proxy.gui.proxy_auto import ProxyAutoWindow
+        ProxyAutoWindow(self.root)
 
     def open_config(self):
         """打开系统配置窗口"""
