@@ -277,8 +277,8 @@ class LogWindow:
             stats = pool.get_stats()
             self.lbl_requests.config(text=str(stats['total_requests']))
             self.lbl_errors.config(text=str(stats['total_errors']))
-            self.lbl_input.config(text=str(stats['total_input_tokens']))
-            self.lbl_output.config(text=str(stats['total_output_tokens']))
+            self.lbl_input.config(text=f"{stats['total_input_tokens'] / 10000:.1f}w")
+            self.lbl_output.config(text=f"{stats['total_output_tokens'] / 10000:.1f}w")
             self.lbl_channels.config(text=str(len(config.CHANNELS)))
             mode_text = "评分" if stats['mode'] == 'scoring' else "轮询"
             self.lbl_mode.config(text=mode_text,
