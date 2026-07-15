@@ -103,6 +103,13 @@ class LogWindow:
         self.log_text.tag_config("retry", foreground="#ce9178")
         self.log_text.tag_config("info", foreground="#569cd6")
         self.log_text.tag_config("model_name", foreground="#c586c0")
+        self.log_text.tag_config("hl_http", foreground="#f44747")
+        self.log_text.tag_config("hl_model", foreground="#c586c0")
+        self.log_text.tag_config("hl_token", foreground="#6a9955")
+
+        # 添加右键菜单切换着色模式
+        self._color_mode = config.LOG_COLOR_MODE
+        self._setup_color_menu()
 
         # 底部按钮
         self.btn_frame = ttk.Frame(root)
@@ -110,6 +117,8 @@ class LogWindow:
 
         ttk.Button(self.btn_frame, text="清空日志", command=self.clear_log, style="Btn.TButton").pack(side=tk.LEFT, padx=3)
         ttk.Button(self.btn_frame, text="隐藏到托盘", command=self.hide, style="Btn.TButton").pack(side=tk.LEFT, padx=3)
+        self.btn_color_mode = ttk.Button(self.btn_frame, text="着色:全部", command=self._cycle_color_mode, style="Btn.TButton")
+        self.btn_color_mode.pack(side=tk.LEFT, padx=3)
         ttk.Button(self.btn_frame, text="密钥管理", command=self.open_key_manager, style="Btn.TButton").pack(side=tk.LEFT, padx=3)
         ttk.Button(self.btn_frame, text="渠道状态", command=self.open_channel_status, style="Btn.TButton").pack(side=tk.LEFT, padx=3)
         ttk.Button(self.btn_frame, text="ProxyAuto", command=self.open_proxy_auto, style="Btn.TButton").pack(side=tk.LEFT, padx=3)
@@ -154,6 +163,22 @@ class LogWindow:
         enabled = self.force_auto_var.get()
         set_force_proxy_auto(enabled)
 
+    def _cycle_color_mode(self):
+        """循环切换着色模式"""
+        self._color_mode = (self._color_mode % 4) + 1
+        mode_names = {1: "整行", 2: "局部", 3: "全部", 4: "关闭"}
+        self.btn_color_mode.config(text=f"着色:{mode_names.get(self._color_mode, '全部')}")
+        from claude_proxy.config import ENV_FILE
+        from claude_proxy.config import _ENV_PREFIX
+        try:
+            if ENV_FILE.exists():
+                lines = ENV_FILE.read_text(encoding="utf-8-sig").splitlines()
+                kept = [l for l in lines if not l.lstrip().startswith("CLAUDE_PROXY_LOG_COLOR_MODE=")]
+                kept.append(f"CLAUDE_PROXY_LOG_COLOR_MODE={self._color_mode}")
+                ENV_FILE.write_text("\n".join(kept) + "\n", encoding="utf-8")
+        except OSError:
+            pass
+
     def open_key_manager(self):
         """打开密钥管理窗口"""
         from claude_proxy.gui.key_manager import KeyManagerWindow
@@ -183,40 +208,52 @@ class LogWindow:
             while True:
                 line = log_queue.get_nowait()
                 if line:
-                    # 用 insert 带 tag 的方式直接着色
+                    mode = self._color_mode
+
+                    # 方式1: 整行变色（mode=1 或 3 时）
                     tag = None
-                    if "ERR" in line or "403" in line or "500" in line:
-                        tag = "error"
-                    elif "503" in line or "retry" in line or "SSL" in line or "429" in line:
-                        tag = "retry"
-                    elif "OK" in line:
-                        tag = "success"
-                    elif "TEST" in line:
-                        tag = "info"
-                    elif "REQ" in line or "AUTO" in line:
-                        tag = "info"
-                    elif "TRACE" in line:
-                        tag = "error"
+                    if mode in (1, 3):
+                        if "ERR" in line or "403" in line or "500" in line:
+                            tag = "error"
+                        elif "503" in line or "retry" in line or "SSL" in line or "429" in line:
+                            tag = "retry"
+                        elif "OK" in line:
+                            tag = "success"
+                        elif "TEST" in line:
+                            tag = "info"
+                        elif "REQ" in line or "AUTO" in line:
+                            tag = "info"
+                        elif "TRACE" in line:
+                            tag = "error"
 
                     if tag:
                         self.log_text.insert(tk.END, line + "\n", tag)
                     else:
                         self.log_text.insert(tk.END, line + "\n")
 
-                    # 行内模型名着色（匹配 model=xxx）
-                    import re
-                    line_start = self.log_text.index("end -1 lines")
-                    line_num = line_start.split(".")[0]
-                    for m in re.finditer(r"model=([\w\-\.]+)", line):
-                        start = f"{line_num}.{m.start(1)}"
-                        end = f"{line_num}.{m.end(1)}"
-                        self.log_text.tag_add("model_name", start, end)
+                    # 方式2: 局部高亮（mode=2 或 3 时）
+                    if mode in (2, 3):
+                        import re
+                        line_start = self.log_text.index("end -1 lines")
+                        line_num = line_start.split(".")[0]
 
-                    # 错误信息着色（匹配 ERR 后的具体错误描述）
-                    for m in re.finditer(r"(ERR|ERROR|错误|失败|❌)(.*)", line):
-                        start = f"{line_num}.{m.start(2)}"
-                        end = f"{line_num}.{m.end(2)}"
-                        self.log_text.tag_add("error", start, end)
+                        # 模型名高亮
+                        for m in re.finditer(r"model=([\w\-\.]+)", line):
+                            start = f"{line_num}.{m.start(1)}"
+                            end = f"{line_num}.{m.end(1)}"
+                            self.log_text.tag_add("hl_model", start, end)
+
+                        # HTTP 状态码高亮
+                        for m in re.finditer(r"HTTP=(\d{3})", line):
+                            start = f"{line_num}.{m.start(1)}"
+                            end = f"{line_num}.{m.end(1)}"
+                            self.log_text.tag_add("hl_http", start, end)
+
+                        # token 数值高亮
+                        for m in re.finditer(r"tokens=(\d+/\d+)", line):
+                            start = f"{line_num}.{m.start(1)}"
+                            end = f"{line_num}.{m.end(1)}"
+                            self.log_text.tag_add("hl_token", start, end)
 
                     self.log_text.see(tk.END)
 

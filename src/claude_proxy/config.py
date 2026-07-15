@@ -78,6 +78,9 @@ MODEL_WARMUP_REQUESTS = _env_int(ENV_PREFIX + "MODEL_WARMUP_REQUESTS", 10)
 MIN_MODEL_REQUESTS = _env_int(ENV_PREFIX + "MIN_MODEL_REQUESTS", 3)
 COOLDOWN_SECONDS = _env_int(ENV_PREFIX + "COOLDOWN_SECONDS", 60)
 
+# 日志着色模式：0=无着色，1=整行变色，2=局部高亮，3=两者都开
+LOG_COLOR_MODE = _env_int(ENV_PREFIX + "LOG_COLOR_MODE", 3)
+
 # 强制 ProxyAuto 模式开关（全局，持久化到 .env）
 _ENV_FORCE_AUTO_KEY = "CLAUDE_PROXY_FORCE_AUTO"
 FORCE_PROXY_AUTO = os.environ.get(_ENV_FORCE_AUTO_KEY, "").strip().lower() in (
