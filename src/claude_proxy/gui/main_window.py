@@ -102,6 +102,7 @@ class LogWindow:
         self.log_text.tag_config("success", foreground="#4ec9b0")
         self.log_text.tag_config("retry", foreground="#ce9178")
         self.log_text.tag_config("info", foreground="#569cd6")
+        self.log_text.tag_config("model_name", foreground="#c586c0")
 
         # 底部按钮
         self.btn_frame = ttk.Frame(root)
@@ -183,17 +184,35 @@ class LogWindow:
                 line = log_queue.get_nowait()
                 if line:
                     self.log_text.insert(tk.END, line + "\n")
-                    # VS Code 风格着色
-                    if "REQ" in line:
-                        self.log_text.tag_add("info", f"{self.log_text.index(tk.END)}-1l", f"{self.log_text.index(tk.END)}-1l+1l")
+
+                    # 整行着色
+                    if "ERR" in line or "403" in line or "500" in line:
+                        self.log_text.tag_add("error", f"{self.log_text.index(tk.END)}-1l", f"{self.log_text.index(tk.END)}-1l+1l")
+                    elif "503" in line or "retry" in line or "SSL" in line or "429" in line:
+                        self.log_text.tag_add("retry", f"{self.log_text.index(tk.END)}-1l", f"{self.log_text.index(tk.END)}-1l+1l")
                     elif "OK" in line:
                         self.log_text.tag_add("success", f"{self.log_text.index(tk.END)}-1l", f"{self.log_text.index(tk.END)}-1l+1l")
-                    elif "ERR" in line or "403" in line or "500" in line:
-                        self.log_text.tag_add("error", f"{self.log_text.index(tk.END)}-1l", f"{self.log_text.index(tk.END)}-1l+1l")
-                    elif "503" in line or "retry" in line or "429" in line:
-                        self.log_text.tag_add("retry", f"{self.log_text.index(tk.END)}-1l", f"{self.log_text.index(tk.END)}-1l+1l")
                     elif "TEST" in line:
                         self.log_text.tag_add("info", f"{self.log_text.index(tk.END)}-1l", f"{self.log_text.index(tk.END)}-1l+1l")
+                    elif "REQ" in line:
+                        self.log_text.tag_add("info", f"{self.log_text.index(tk.END)}-1l", f"{self.log_text.index(tk.END)}-1l+1l")
+                    elif "AUTO" in line:
+                        self.log_text.tag_add("info", f"{self.log_text.index(tk.END)}-1l", f"{self.log_text.index(tk.END)}-1l+1l")
+                    elif "TRACE" in line:
+                        self.log_text.tag_add("error", f"{self.log_text.index(tk.END)}-1l", f"{self.log_text.index(tk.END)}-1l+1l")
+
+                    # 行内模型名着色（匹配 model=xxx 或 model=xxx->xxx）
+                    import re
+                    for m in re.finditer(r"model=([\w\-\.]+)", line):
+                        start = f"{self.log_text.index(tk.END)}-1l+{m.start(1)}c"
+                        end = f"{self.log_text.index(tk.END)}-1l+{m.end(1)}c"
+                        self.log_text.tag_add("model_name", start, end)
+
+                    # 错误信息着色（匹配 ERR 后的具体错误描述）
+                    for m in re.finditer(r"(ERR|ERROR|错误|失败|❌)(.*)", line):
+                        start = f"{self.log_text.index(tk.END)}-1l+{m.start(2)}c"
+                        end = f"{self.log_text.index(tk.END)}-1l+{m.end(2)}c"
+                        self.log_text.tag_add("error", start, end)
 
                     self.log_text.see(tk.END)
 
