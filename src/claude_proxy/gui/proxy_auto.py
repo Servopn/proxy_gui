@@ -67,7 +67,7 @@ class ProxyAutoWindow:
         info_inner = ttk.Frame(config_frame)
         info_inner.pack(fill=tk.X, padx=5, pady=5)
         ttk.Label(info_inner, text="当前模型池（拖动排序，优先级从上到下）",
-                  font=('Arial', 10, 'bold')).pack(anchor='w')
+                  font=("Microsoft YaHei UI", 10, 'bold')).pack(anchor='w')
 
         pool_inner = ttk.Frame(config_frame)
         pool_inner.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)

@@ -25,7 +25,7 @@ class ConfigWindow:
         self.window.transient(parent)
         _center_window(self.window)
 
-        ttk.Label(self.window, text="系统配置", font=("Arial", 14, "bold")).pack(pady=(12, 4))
+        ttk.Label(self.window, text="系统配置", font=("Microsoft YaHei UI", 16, "bold")).pack(pady=(12, 4))
 
         # === 可调整参数区域 ===
         editable = ttk.LabelFrame(self.window, text="可调整参数")
