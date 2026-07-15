@@ -183,39 +183,48 @@ class LogWindow:
             while True:
                 line = log_queue.get_nowait()
                 if line:
-                    # 记录当前行号
-                    cur_line = self.log_text.index(tk.END)
+                    # 先插入文本
                     self.log_text.insert(tk.END, line + "\n")
+                    # 获取插入行的行号（insert 之前 END 是空行，insert 之后 END 指向新行末尾）
+                    # 使用 +1c -1l 定位到刚插入的行
+                    line_start = self.log_text.index("end -1 lines")
+                    line_end = self.log_text.index("end -1 lines lineend")
 
                     # 整行着色（基于文本内容）
+                    tag = None
                     if "ERR" in line or "403" in line or "500" in line:
-                        self.log_text.tag_add("error", f"{cur_line} linestart", f"{cur_line} lineend")
+                        tag = "error"
                     elif "503" in line or "retry" in line or "SSL" in line or "429" in line:
-                        self.log_text.tag_add("retry", f"{cur_line} linestart", f"{cur_line} lineend")
+                        tag = "retry"
                     elif "OK" in line:
-                        self.log_text.tag_add("success", f"{cur_line} linestart", f"{cur_line} lineend")
+                        tag = "success"
                     elif "TEST" in line:
-                        self.log_text.tag_add("info", f"{cur_line} linestart", f"{cur_line} lineend")
+                        tag = "info"
                     elif "REQ" in line:
-                        self.log_text.tag_add("info", f"{cur_line} linestart", f"{cur_line} lineend")
+                        tag = "info"
                     elif "AUTO" in line:
-                        self.log_text.tag_add("info", f"{cur_line} linestart", f"{cur_line} lineend")
+                        tag = "info"
                     elif "TRACE" in line:
-                        self.log_text.tag_add("error", f"{cur_line} linestart", f"{cur_line} lineend")
+                        tag = "error"
+                    if tag:
+                        self.log_text.tag_add(tag, line_start, line_end)
+                        self.log_text.tag_raise(tag)
 
                     # 行内模型名着色（匹配 model=xxx 或 model=xxx->xxx）
                     import re
-                    line_num = cur_line.split(".")[0]
+                    line_num = line_start.split(".")[0]
                     for m in re.finditer(r"model=([\w\-\.]+)", line):
                         start = f"{line_num}.{m.start(1)}"
                         end = f"{line_num}.{m.end(1)}"
                         self.log_text.tag_add("model_name", start, end)
+                        self.log_text.tag_raise("model_name")
 
                     # 错误信息着色（匹配 ERR 后的具体错误描述）
                     for m in re.finditer(r"(ERR|ERROR|错误|失败|❌)(.*)", line):
                         start = f"{line_num}.{m.start(2)}"
                         end = f"{line_num}.{m.end(2)}"
                         self.log_text.tag_add("error", start, end)
+                        self.log_text.tag_raise("error")
 
                     self.log_text.see(tk.END)
 
