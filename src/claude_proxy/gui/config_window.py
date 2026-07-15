@@ -7,10 +7,11 @@ from tkinter import ttk, messagebox
 
 from claude_proxy import config
 from claude_proxy.config import (
+    MAX_POOL_SIZE,
     MAX_RETRY_CHANNELS,
     set_max_retry_channels,
 )
-from claude_proxy.connection_pool import MAX_POOL_SIZE, set_max_pool_size
+from claude_proxy.connection_pool import set_max_pool_size
 from claude_proxy.gui.utils import _center_window
 from claude_proxy.stats import ChannelPool, model_pool
 
