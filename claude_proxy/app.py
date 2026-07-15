@@ -20,7 +20,16 @@ from PIL import Image
 import pystray
 
 from claude_proxy import tray
+from claude_proxy import config
 from claude_proxy.config import get_app_dir
+# 强制 import 所有子模块，确保 PyInstaller 打包时不会遗漏
+import claude_proxy.gui.main_window  # noqa: F401
+import claude_proxy.gui.channel_status  # noqa: F401
+import claude_proxy.gui.proxy_auto  # noqa: F401
+import claude_proxy.gui.config_window  # noqa: F401
+import claude_proxy.gui.key_manager  # noqa: F401
+import claude_proxy.gui.model_pool  # noqa: F401
+import claude_proxy.gui.utils  # noqa: F401
 from claude_proxy.gui.main_window import LogWindow
 from claude_proxy.logger import log, set_log_file
 from claude_proxy.proxy import create_proxy_server, run_proxy, stop_proxy

@@ -254,10 +254,6 @@ class LogWindow:
                         else:
                             self.log_text.insert(tk.END, line + "\n")
 
-                    else:
-                        # mode=4 或其他：无着色
-                        self.log_text.insert(tk.END, line + "\n")
-
                     self.log_text.see(tk.END)
 
                     # 限制行数，避免每条日志都复制整个文本框内容。
