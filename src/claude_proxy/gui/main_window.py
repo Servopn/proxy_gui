@@ -107,9 +107,8 @@ class LogWindow:
         self.log_text.tag_config("hl_model", foreground="#c586c0")
         self.log_text.tag_config("hl_token", foreground="#6a9955")
 
-        # 添加右键菜单切换着色模式
+        # 着色模式
         self._color_mode = config.LOG_COLOR_MODE
-        self._setup_color_menu()
 
         # 底部按钮
         self.btn_frame = ttk.Frame(root)
