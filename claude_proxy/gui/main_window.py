@@ -122,16 +122,6 @@ class LogWindow:
         ]
         self._model_color_map = {}
 
-    def _model_tag(self, model_name):
-        """为模型名分配稳定的颜色 tag，相同模型名每次返回相同颜色。"""
-        if model_name not in self._model_color_map:
-            idx = len(self._model_color_map) % len(self._model_colors)
-            color = self._model_colors[idx]
-            tag = f"model_{len(self._model_color_map)}"
-            self.log_text.tag_config(tag, foreground=color)
-            self._model_color_map[model_name] = tag
-        return self._model_color_map[model_name]
-
         # 着色模式
         self._color_mode = config.LOG_COLOR_MODE
 
@@ -186,6 +176,16 @@ class LogWindow:
         """强制 ProxyAuto 模式开关改变时的回调"""
         enabled = self.force_auto_var.get()
         set_force_proxy_auto(enabled)
+
+    def _model_tag(self, model_name):
+        """为模型名分配稳定的颜色 tag，相同模型名每次返回相同颜色。"""
+        if model_name not in self._model_color_map:
+            idx = len(self._model_color_map) % len(self._model_colors)
+            color = self._model_colors[idx]
+            tag = f"model_{len(self._model_color_map)}"
+            self.log_text.tag_config(tag, foreground=color)
+            self._model_color_map[model_name] = tag
+        return self._model_color_map[model_name]
 
     def _cycle_color_mode(self):
         """在整行变色和局部高亮之间切换"""
