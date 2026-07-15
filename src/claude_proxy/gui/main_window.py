@@ -10,10 +10,8 @@ from tkinter import ttk, scrolledtext
 
 from claude_proxy import config
 from claude_proxy.config import (
-    DEFAULT_MAX_RETRY_CHANNELS,
     FORCE_PROXY_AUTO,
     set_force_proxy_auto,
-    set_max_retry_channels,
 )
 from claude_proxy.logger import log_queue
 from claude_proxy.proxy import stop_proxy
@@ -80,15 +78,6 @@ class LogWindow:
 
         self.log_title = ttk.Label(ctrl_bar, text="实时日志", font=("Microsoft YaHei UI", 11, "bold"))
         self.log_title.pack(side=tk.LEFT)
-
-        retry_frame = ttk.Frame(ctrl_bar)
-        retry_frame.pack(side=tk.RIGHT, padx=10)
-        ttk.Label(retry_frame, text="503重试:", font=("Microsoft YaHei UI", 9)).pack(side=tk.LEFT, padx=(0, 4))
-        self.retry_var = tk.StringVar(value=str(DEFAULT_MAX_RETRY_CHANNELS))
-        self.retry_spin = ttk.Spinbox(retry_frame, from_=1, to=len(config.CHANNELS), width=4,
-                                      textvariable=self.retry_var, command=self._on_retry_change)
-        self.retry_spin.pack(side=tk.LEFT, padx=2)
-        ttk.Label(retry_frame, text=f"/{len(config.CHANNELS)}", font=("Microsoft YaHei UI", 9)).pack(side=tk.LEFT)
 
         # 强制 ProxyAuto 开关
         auto_frame = ttk.Frame(ctrl_bar)
@@ -158,14 +147,6 @@ class LogWindow:
 
     def clear_log(self):
         self.log_text.delete(1.0, tk.END)
-
-    def _on_retry_change(self):
-        """503 重试渠道数改变时的回调"""
-        try:
-            new_size = int(self.retry_var.get())
-            set_max_retry_channels(new_size)
-        except ValueError:
-            pass
 
     def _on_force_auto_change(self):
         """强制 ProxyAuto 模式开关改变时的回调"""
