@@ -53,8 +53,11 @@ DEFAULT_MAX_POOL_SIZE = 10
 MAX_POOL_SIZE = DEFAULT_MAX_POOL_SIZE
 CONNECTION_TIMEOUT = 300.0
 
-# 强制 ProxyAuto 模式开关（全局）
-FORCE_PROXY_AUTO = False
+# 强制 ProxyAuto 模式开关（全局，持久化到 .env）
+_ENV_FORCE_AUTO_KEY = "CLAUDE_PROXY_FORCE_AUTO"
+FORCE_PROXY_AUTO = os.environ.get(_ENV_FORCE_AUTO_KEY, "").strip().lower() in (
+    "1", "true", "yes", "on"
+)
 
 
 def set_max_retry_channels(n):
@@ -71,11 +74,30 @@ def get_max_retry_channels():
 
 
 def set_force_proxy_auto(enabled):
-    """设置是否强制使用 ProxyAuto 模式"""
+    """设置是否强制使用 ProxyAuto 模式，并持久化到 .env"""
     global FORCE_PROXY_AUTO
     FORCE_PROXY_AUTO = bool(enabled)
+    _write_env_force_auto(FORCE_PROXY_AUTO)
     from claude_proxy.logger import log
     log(f"强制 ProxyAuto 模式: {'开启' if FORCE_PROXY_AUTO else '关闭'}")
+
+
+def _write_env_force_auto(enabled):
+    """将强制 ProxyAuto 开关状态写入 .env"""
+    if not ENV_FILE.exists():
+        from claude_proxy.logger import log
+        log("持久化: .env 文件不存在，跳过写入")
+        return
+    try:
+        lines = ENV_FILE.read_text(encoding="utf-8-sig").splitlines()
+        kept = [line for line in lines
+                if not line.lstrip().startswith(_ENV_FORCE_AUTO_KEY + "=")]
+        if enabled:
+            kept.append(f"{_ENV_FORCE_AUTO_KEY}=1")
+        ENV_FILE.write_text("\n".join(kept) + "\n", encoding="utf-8")
+        os.environ[_ENV_FORCE_AUTO_KEY] = "1" if enabled else ""
+    except OSError:
+        pass
 
 
 def get_force_proxy_auto():
