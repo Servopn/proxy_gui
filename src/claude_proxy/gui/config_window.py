@@ -13,7 +13,7 @@ from claude_proxy.config import (
 )
 from claude_proxy.connection_pool import set_max_pool_size
 from claude_proxy.gui.utils import _center_window
-from claude_proxy.stats import ChannelPool, model_pool
+from claude_proxy.stats import model_pool
 
 
 class ConfigWindow:
@@ -21,37 +21,64 @@ class ConfigWindow:
     def __init__(self, parent):
         self.window = tk.Toplevel(parent)
         self.window.title("系统配置")
-        self.window.geometry("600x500")
+        self.window.geometry("650x550")
         self.window.transient(parent)
         _center_window(self.window)
 
         ttk.Label(self.window, text="系统配置参数", font=("Arial", 14, "bold")).pack(pady=10)
 
         # === 可调整参数区域 ===
-        editable = ttk.LabelFrame(self.window, text="可调整参数")
+        editable = ttk.LabelFrame(self.window, text="可调整参数（修改后点击应用生效）")
         editable.pack(fill=tk.X, padx=12, pady=6)
 
-        self.retry_var = tk.StringVar(value=str(MAX_RETRY_CHANNELS))
-        self.pool_var = tk.StringVar(value=str(MAX_POOL_SIZE))
+        # 参数：变量名 / 标签 / 范围 / 配置键名
+        self._editable_params = [
+            ("max_retry", "最大重试渠道数", 1, len(config.CHANNELS), 1, "MAX_RETRY_CHANNELS"),
+            ("pool_size", "连接池大小", 1, 100, 1, "MAX_POOL_SIZE"),
+            ("warmup", "渠道评分预热请求数", 1, 500, 10, "WARMUP_REQUESTS"),
+            ("min_ch", "渠道最少样本数", 1, 100, 1, "MIN_CHANNEL_REQUESTS"),
+            ("score_th", "评分模式最低平均分", 1, 100, 5, "SCORE_THRESHOLD"),
+            ("cooldown_ch", "渠道冷却上限", 1, 50, 1, "COOLDOWN_CHANNELS"),
+            ("model_warmup", "模型评分预热请求数", 1, 200, 10, "MODEL_WARMUP_REQUESTS"),
+            ("min_model", "模型最少样本数", 1, 50, 1, "MIN_MODEL_REQUESTS"),
+            ("cooldown_sec", "模型冷却时间(秒)", 5, 600, 10, "COOLDOWN_SECONDS"),
+        ]
 
-        ttk.Label(editable, text="最大重试渠道数").grid(row=0, column=0, sticky="w", padx=8, pady=6)
-        self.retry_spin = ttk.Spinbox(editable, from_=1, to=len(config.CHANNELS),
-                                      textvariable=self.retry_var, width=8)
-        self.retry_spin.grid(row=0, column=1, padx=8)
+        self._vars = {}
+        for i, (key, label, lo, hi, step, _) in enumerate(self._editable_params):
+            cur = getattr(config, key, None)
+            if cur is None:
+                # 映射名称到 config 属性
+                for attr_name in dir(config):
+                    if attr_name.upper() == self._editable_params[i][5]:
+                        cur = getattr(config, attr_name)
+                        break
+            # 直接取配置值
+            cur = getattr(config, self._editable_params[i][5])
+            if isinstance(cur, float):
+                # 浮点数转成 0-100 百分比整数显示
+                display_val = int(cur * 100) if cur < 1 else int(cur)
+                self._vars[key] = tk.StringVar(value=str(display_val))
+                ttk.Label(editable, text=label).grid(row=i, column=0, sticky="w", padx=8, pady=3)
+                sp = ttk.Spinbox(editable, from_=lo, to=hi, textvariable=self._vars[key], width=8)
+                sp.grid(row=i, column=1, padx=8)
+            else:
+                self._vars[key] = tk.StringVar(value=str(cur))
+                ttk.Label(editable, text=label).grid(row=i, column=0, sticky="w", padx=8, pady=3)
+                sp = ttk.Spinbox(editable, from_=lo, to=hi, textvariable=self._vars[key], width=8)
+                sp.grid(row=i, column=1, padx=8)
 
-        ttk.Label(editable, text="连接池大小").grid(row=1, column=0, sticky="w", padx=8, pady=6)
-        self.pool_spin = ttk.Spinbox(editable, from_=1, to=100,
-                                     textvariable=self.pool_var, width=8)
-        self.pool_spin.grid(row=1, column=1, padx=8)
-
-        ttk.Button(editable, text="应用", command=self._apply).grid(row=0, column=2, rowspan=2, padx=12)
+        # 应用按钮跨行
+        total_rows = len(self._editable_params)
+        ttk.Button(editable, text="应用", command=self._apply).grid(
+            row=0, column=2, rowspan=total_rows, padx=12, sticky="n")
 
         # === 只读参数区域 ===
         readonly = ttk.LabelFrame(self.window, text="只读参数")
         readonly.pack(fill=tk.BOTH, expand=True, padx=12, pady=6)
 
         columns = ("param", "value", "description")
-        self.tree = ttk.Treeview(readonly, columns=columns, show="headings", height=8)
+        self.tree = ttk.Treeview(readonly, columns=columns, show="headings", height=6)
         self.tree.heading("param", text="参数名")
         self.tree.heading("value", text="当前值")
         self.tree.heading("description", text="说明")
@@ -70,10 +97,6 @@ class ConfigWindow:
         for item in self.tree.get_children():
             self.tree.delete(item)
         rows = [
-            ("WARMUP_REQUESTS", ChannelPool.WARMUP_REQUESTS, "尝试达到此数量后启用评分"),
-            ("MIN_CHANNEL_REQUESTS", ChannelPool.MIN_CHANNEL_REQUESTS, "单渠道最少样本数"),
-            ("SCORE_THRESHOLD", ChannelPool.SCORE_THRESHOLD, "评分模式最低平均分"),
-            ("COOLDOWN_CHANNELS", ChannelPool.COOLDOWN_CHANNELS, "过多冷却时退回轮询"),
             ("总渠道数", len(config.CHANNELS), "当前渠道总数"),
             ("模型池数量", len(model_pool.models), "自动模型可选数量"),
         ]
@@ -82,10 +105,19 @@ class ConfigWindow:
 
     def _apply(self):
         try:
-            set_max_retry_channels(int(self.retry_var.get()))
-            set_max_pool_size(int(self.pool_var.get()))
+            set_max_retry_channels(int(self._vars["max_retry"].get()))
+            set_max_pool_size(int(self._vars["pool_size"].get()))
+            # 更新 config 中的可调参数
+            config.WARMUP_REQUESTS = int(self._vars["warmup"].get())
+            config.MIN_CHANNEL_REQUESTS = int(self._vars["min_ch"].get())
+            # SCORE_THRESHOLD 是浮点数，显示为 0-100 整数，转换回浮点
+            config.SCORE_THRESHOLD = float(self._vars["score_th"].get()) / 100.0
+            config.COOLDOWN_CHANNELS = int(self._vars["cooldown_ch"].get())
+            config.MODEL_WARMUP_REQUESTS = int(self._vars["model_warmup"].get())
+            config.MIN_MODEL_REQUESTS = int(self._vars["min_model"].get())
+            config.COOLDOWN_SECONDS = int(self._vars["cooldown_sec"].get())
         except ValueError:
             messagebox.showerror("错误", "配置值必须是整数")
             return
         self._load_config()
-        messagebox.showinfo("成功", "运行时配置已应用")
+        messagebox.showinfo("成功", "运行时配置已应用（重启后失效）")

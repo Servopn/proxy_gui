@@ -13,11 +13,7 @@ from claude_proxy import config
 
 
 class ChannelPool:
-    # 动态切换阈值
-    WARMUP_REQUESTS = 30          # 全局前30个请求后启用评分
-    MIN_CHANNEL_REQUESTS = 5      # 单个渠道至少5个请求后才参与评分
-    SCORE_THRESHOLD = 0.6         # 评分低于0.6回到轮询
-    COOLDOWN_CHANNELS = 10        # 冷却超过10个渠道也回到轮询
+    # 动态切换阈值（默认值在 config.py 中，运行时可改）
 
     def __init__(self):
         self.channels = config.CHANNELS
@@ -45,7 +41,7 @@ class ChannelPool:
         """根据成功率计算评分"""
         s = self.stats[ch_id]
         total = s["requests"]
-        if total < self.MIN_CHANNEL_REQUESTS:
+        if total < config.MIN_CHANNEL_REQUESTS:
             s["score"] = 1.0  # 数据不足，默认满分
         else:
             success_rate = s["success"] / max(total, 1)
@@ -54,20 +50,20 @@ class ChannelPool:
 
     def _should_use_scoring(self):
         """判断是否应该使用评分模式"""
-        if self.total_attempts < self.WARMUP_REQUESTS:
+        if self.total_attempts < config.WARMUP_REQUESTS:
             return False
 
         # 统计冷却中的渠道数量
         now = time.time()
         cooldown_count = sum(1 for s in self.stats.values()
                            if s["cooldown_until"] > now)
-        if cooldown_count > self.COOLDOWN_CHANNELS:
+        if cooldown_count > config.COOLDOWN_CHANNELS:
             return False  # 太多渠道冷却，退回轮询
 
         # 计算平均分
         scores = [s["score"] for s in self.stats.values()]
         avg_score = sum(scores) / len(scores) if scores else 1.0
-        if avg_score < self.SCORE_THRESHOLD:
+        if avg_score < config.SCORE_THRESHOLD:
             return False  # 平均分太低，退回轮询
 
         return True
@@ -185,11 +181,6 @@ class ChannelPool:
 
 
 class ModelPool:
-    """模型评分池 - 按模型维度追踪成功/失败率，用于 ProxyAutoModel 自动选择"""
-
-    WARMUP_REQUESTS = 10
-    MIN_MODEL_REQUESTS = 3
-    COOLDOWN_SECONDS = 60  # 模型冷却时间（比渠道长，因为模型故障更可能是持续性的）
 
     def __init__(self, models=None):
         self.models = models or list(config.AUTO_MODEL_POOL)
@@ -211,7 +202,7 @@ class ModelPool:
     def _update_score(self, model):
         s = self.stats[model]
         total = s["requests"]
-        if total < self.MIN_MODEL_REQUESTS:
+        if total < config.MIN_MODEL_REQUESTS:
             s["score"] = 1.0
         else:
             s["score"] = s["success"] / max(total, 1)
@@ -222,7 +213,7 @@ class ModelPool:
         with self.lock:
             now = time.time()
             # 先尝试按评分选
-            if self.total_requests >= self.WARMUP_REQUESTS:
+            if self.total_requests >= config.MODEL_WARMUP_REQUESTS:
                 scored = []
                 for m in self.models:
                     s = self.stats.get(m)
@@ -275,7 +266,7 @@ class ModelPool:
                 s["errors"] += 1
                 s["consecutive_errors"] += 1
                 if s["consecutive_errors"] >= 2:
-                    s["cooldown_until"] = time.time() + self.COOLDOWN_SECONDS
+                    s["cooldown_until"] = time.time() + config.COOLDOWN_SECONDS
                 self._update_score(model)
 
     def get_stats(self):

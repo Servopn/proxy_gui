@@ -53,6 +53,31 @@ DEFAULT_MAX_POOL_SIZE = 10
 MAX_POOL_SIZE = DEFAULT_MAX_POOL_SIZE
 CONNECTION_TIMEOUT = 300.0
 
+# 评分与冷却阈值（可动态调整，通过 .env 覆盖）
+ENV_PREFIX = "CLAUDE_PROXY_"
+
+def _env_int(key, default):
+    """从环境变量读取整数，不存在则返回默认值"""
+    try:
+        return int(os.environ.get(key, str(default)))
+    except (ValueError, TypeError):
+        return default
+
+def _env_float(key, default):
+    """从环境变量读取浮点数，不存在则返回默认值"""
+    try:
+        return float(os.environ.get(key, str(default)))
+    except (ValueError, TypeError):
+        return default
+
+WARMUP_REQUESTS = _env_int(ENV_PREFIX + "WARMUP_REQUESTS", 30)
+MIN_CHANNEL_REQUESTS = _env_int(ENV_PREFIX + "MIN_CHANNEL_REQUESTS", 5)
+SCORE_THRESHOLD = _env_float(ENV_PREFIX + "SCORE_THRESHOLD", 0.6)
+COOLDOWN_CHANNELS = _env_int(ENV_PREFIX + "COOLDOWN_CHANNELS", 10)
+MODEL_WARMUP_REQUESTS = _env_int(ENV_PREFIX + "MODEL_WARMUP_REQUESTS", 10)
+MIN_MODEL_REQUESTS = _env_int(ENV_PREFIX + "MIN_MODEL_REQUESTS", 3)
+COOLDOWN_SECONDS = _env_int(ENV_PREFIX + "COOLDOWN_SECONDS", 60)
+
 # 强制 ProxyAuto 模式开关（全局，持久化到 .env）
 _ENV_FORCE_AUTO_KEY = "CLAUDE_PROXY_FORCE_AUTO"
 FORCE_PROXY_AUTO = os.environ.get(_ENV_FORCE_AUTO_KEY, "").strip().lower() in (
