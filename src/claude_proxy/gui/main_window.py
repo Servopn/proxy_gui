@@ -209,16 +209,62 @@ class LogWindow:
                 if line:
                     mode = self._color_mode
 
-                    # 总是先插入不带 tag 的文本
-                    self.log_text.insert(tk.END, line + "\n")
+                    # 方式2: 局部高亮优先（mode=2 或 3 时逐段插入）
+                    if mode in (2, 3):
+                        import re
+                        # 找到需要高亮的区间
+                        highlights = []
+                        for m in re.finditer(r"model=([\w\-\.]+)", line):
+                            highlights.append(("hl_model", m.start(1), m.end(1)))
+                        for m in re.finditer(r"HTTP=(\d{3})", line):
+                            highlights.append(("hl_http", m.start(1), m.end(1)))
+                        for m in re.finditer(r"tokens=(\d+/\d+)", line):
+                            highlights.append(("hl_token", m.start(1), m.end(1)))
+                        highlights.sort(key=lambda x: x[1])
 
-                    line_start = self.log_text.index("end -1 lines")
-                    line_end = self.log_text.index("end -1 lines lineend")
-                    import re
-                    line_num = line_start.split(".")[0]
+                        if highlights and mode == 3:
+                            # mode=3: 整行着色 + 局部高亮
+                            # 先判断整行 tag
+                            whole_tag = None
+                            if "ERR" in line or "403" in line or "500" in line:
+                                whole_tag = "error"
+                            elif "503" in line or "retry" in line or "SSL" in line or "429" in line:
+                                whole_tag = "retry"
+                            elif "OK" in line:
+                                whole_tag = "success"
+                            elif "REQ" in line or "AUTO" in line or "TEST" in line:
+                                whole_tag = "info"
+                            elif "TRACE" in line:
+                                whole_tag = "error"
 
-                    # 方式1: 整行变色（mode=1 或 3 时）
-                    if mode in (1, 3):
+                            # 逐段插入：先插入整行内容（不带 tag），然后给非高亮区加整行 tag，高亮区加局部 tag
+                            self.log_text.insert(tk.END, line + "\n")
+                            line_start = self.log_text.index("end -1 lines")
+                            line_end = self.log_text.index("end -1 lines lineend")
+                            ln = line_start.split(".")[0]
+
+                            # 整行 tag
+                            if whole_tag:
+                                self.log_text.tag_add(whole_tag, line_start, line_end)
+                            # 局部高亮（后加，覆盖整行 tag）
+                            for htag, hstart, hend in highlights:
+                                self.log_text.tag_add(htag, f"{ln}.{hstart}", f"{ln}.{hend}")
+                        elif highlights:
+                            # mode=2: 仅局部高亮
+                            pos = 0
+                            for htag, hstart, hend in highlights:
+                                if hstart > pos:
+                                    self.log_text.insert(tk.END, line[pos:hstart])
+                                self.log_text.insert(tk.END, line[hstart:hend], htag)
+                                pos = hend
+                            if pos < len(line):
+                                self.log_text.insert(tk.END, line[pos:])
+                            self.log_text.insert(tk.END, "\n")
+                        else:
+                            self.log_text.insert(tk.END, line + "\n")
+
+                    # 方式1: 仅整行变色（mode=1 时）
+                    elif mode == 1:
                         tag = None
                         if "ERR" in line or "403" in line or "500" in line:
                             tag = "error"
@@ -233,31 +279,13 @@ class LogWindow:
                         elif "TRACE" in line:
                             tag = "error"
                         if tag:
-                            self.log_text.tag_add(tag, line_start, line_end)
-                            self.log_text.tag_raise(tag)
+                            self.log_text.insert(tk.END, line + "\n", tag)
+                        else:
+                            self.log_text.insert(tk.END, line + "\n")
 
-                    # 方式2: 局部高亮（mode=2 或 3 时）
-                    if mode in (2, 3):
-                        # 模型名高亮
-                        for m in re.finditer(r"model=([\w\-\.]+)", line):
-                            start = f"{line_num}.{m.start(1)}"
-                            end = f"{line_num}.{m.end(1)}"
-                            self.log_text.tag_add("hl_model", start, end)
-                            self.log_text.tag_raise("hl_model")
-
-                        # HTTP 状态码高亮
-                        for m in re.finditer(r"HTTP=(\d{3})", line):
-                            start = f"{line_num}.{m.start(1)}"
-                            end = f"{line_num}.{m.end(1)}"
-                            self.log_text.tag_add("hl_http", start, end)
-                            self.log_text.tag_raise("hl_http")
-
-                        # token 数值高亮
-                        for m in re.finditer(r"tokens=(\d+/\d+)", line):
-                            start = f"{line_num}.{m.start(1)}"
-                            end = f"{line_num}.{m.end(1)}"
-                            self.log_text.tag_add("hl_token", start, end)
-                            self.log_text.tag_raise("hl_token")
+                    else:
+                        # mode=4 或其他：无着色
+                        self.log_text.insert(tk.END, line + "\n")
 
                     self.log_text.see(tk.END)
 

@@ -125,5 +125,38 @@ class ConfigWindow:
         except ValueError:
             messagebox.showerror("错误", "配置值必须是整数")
             return
+
+        # 持久化到 .env
+        self._persist()
         self._load_config()
-        messagebox.showinfo("成功", "运行时配置已应用（重启后失效）")
+        messagebox.showinfo("成功", "运行时配置已应用并保存到 .env")
+
+    def _persist(self):
+        """将当前可调参数写入 .env"""
+        from claude_proxy.config import ENV_FILE
+        if not ENV_FILE.exists():
+            return
+        try:
+            lines = ENV_FILE.read_text(encoding="utf-8-sig").splitlines()
+            # 要更新的 key 列表
+            update_keys = {
+                "CLAUDE_PROXY_WARMUP_REQUESTS": str(config.WARMUP_REQUESTS),
+                "CLAUDE_PROXY_MIN_CHANNEL_REQUESTS": str(config.MIN_CHANNEL_REQUESTS),
+                "CLAUDE_PROXY_SCORE_THRESHOLD": str(config.SCORE_THRESHOLD),
+                "CLAUDE_PROXY_COOLDOWN_CHANNELS": str(config.COOLDOWN_CHANNELS),
+                "CLAUDE_PROXY_MODEL_WARMUP_REQUESTS": str(config.MODEL_WARMUP_REQUESTS),
+                "CLAUDE_PROXY_MIN_MODEL_REQUESTS": str(config.MIN_MODEL_REQUESTS),
+                "CLAUDE_PROXY_COOLDOWN_SECONDS": str(config.COOLDOWN_SECONDS),
+                "CLAUDE_PROXY_MAX_RETRY_CHANNELS": str(config.MAX_RETRY_CHANNELS),
+                "CLAUDE_PROXY_MAX_POOL_SIZE": str(config.MAX_POOL_SIZE),
+            }
+            # 移除旧 key
+            kept = [l for l in lines
+                    if not any(l.lstrip().startswith(k + "=") for k in update_keys)]
+            for k, v in update_keys.items():
+                import os
+                os.environ[k] = v
+                kept.append(f"{k}={v}")
+            ENV_FILE.write_text("\n".join(kept) + "\n", encoding="utf-8")
+        except OSError:
+            pass
