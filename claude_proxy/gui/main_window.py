@@ -105,6 +105,7 @@ class LogWindow:
         self.log_text.tag_config("model_name", foreground="#c586c0")
         self.log_text.tag_config("hl_http", foreground="#f44747")
         self.log_text.tag_config("hl_model", foreground="#c586c0")
+        self.log_text.tag_config("hl_model_after", foreground="#569cd6")
         self.log_text.tag_config("hl_token", foreground="#6a9955")
 
         # 着色模式
@@ -213,8 +214,12 @@ class LogWindow:
                     if mode == 2:
                         # 局部高亮：逐段插入带 tag
                         highlights = []
-                        for m in re.finditer(r"model=([\w\-\.]+(?:->[\w\-\.]+)?)", line):
+                        # 原始模型名（-> 之前）
+                        for m in re.finditer(r"model=([\w.\-]+?)(?:->| |$)", line):
                             highlights.append(("hl_model", m.start(1), m.end(1)))
+                        # -> 之后的实际模型名
+                        for m in re.finditer(r"->([\w.]+)", line):
+                            highlights.append(("hl_model_after", m.start(1), m.end(1)))
                         for m in re.finditer(r"HTTP=(\d{3})", line):
                             highlights.append(("hl_http", m.start(1), m.end(1)))
                         for m in re.finditer(r"tokens=(\d+/\d+)", line):
