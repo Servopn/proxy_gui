@@ -213,7 +213,7 @@ class LogWindow:
                     if mode == 2:
                         # 局部高亮：逐段插入带 tag
                         highlights = []
-                        for m in re.finditer(r"model=([\w\-\.]+)", line):
+                        for m in re.finditer(r"model=([\w\-\.]+(?:->[\w\-\.]+)?)", line):
                             highlights.append(("hl_model", m.start(1), m.end(1)))
                         for m in re.finditer(r"HTTP=(\d{3})", line):
                             highlights.append(("hl_http", m.start(1), m.end(1)))
