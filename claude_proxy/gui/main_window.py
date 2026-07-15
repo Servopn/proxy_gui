@@ -104,9 +104,33 @@ class LogWindow:
         self.log_text.tag_config("info", foreground="#569cd6")
         self.log_text.tag_config("model_name", foreground="#c586c0")
         self.log_text.tag_config("hl_http", foreground="#f44747")
-        self.log_text.tag_config("hl_model", foreground="#c586c0")
-        self.log_text.tag_config("hl_model_after", foreground="#569cd6")
         self.log_text.tag_config("hl_token", foreground="#6a9955")
+        # 模型名颜色池，按模型名分配稳定颜色
+        self._model_colors = [
+            "#c586c0",  # 紫
+            "#569cd6",  # 蓝
+            "#4ec9b0",  # 青绿
+            "#dcdcaa",  # 黄
+            "#9cdcfe",  # 浅蓝
+            "#f44747",  # 红
+            "#ce9178",  # 橙
+            "#6a9955",  # 绿
+            "#b5cea8",  # 浅绿
+            "#d7ba7d",  # 金
+            "#4fc1ff",  # 天蓝
+            "#e06c75",  # 粉红
+        ]
+        self._model_color_map = {}
+
+    def _model_tag(self, model_name):
+        """为模型名分配稳定的颜色 tag，相同模型名每次返回相同颜色。"""
+        if model_name not in self._model_color_map:
+            idx = len(self._model_color_map) % len(self._model_colors)
+            color = self._model_colors[idx]
+            tag = f"model_{len(self._model_color_map)}"
+            self.log_text.tag_config(tag, foreground=color)
+            self._model_color_map[model_name] = tag
+        return self._model_color_map[model_name]
 
         # 着色模式
         self._color_mode = config.LOG_COLOR_MODE
@@ -216,10 +240,12 @@ class LogWindow:
                         highlights = []
                         # 原始模型名（-> 之前）
                         for m in re.finditer(r"model=([\w.\-]+?)(?:->| |$)", line):
-                            highlights.append(("hl_model", m.start(1), m.end(1)))
+                            model_name = m.group(1)
+                            highlights.append((self._model_tag(model_name), m.start(1), m.end(1)))
                         # -> 之后的实际模型名
                         for m in re.finditer(r"->([\w.]+)", line):
-                            highlights.append(("hl_model_after", m.start(1), m.end(1)))
+                            model_name = m.group(1)
+                            highlights.append((self._model_tag(model_name), m.start(1), m.end(1)))
                         # HTTP 状态码高亮（3位数字，如 503/429/403/500）
                         for m in re.finditer(r"\b(\d{3})\b", line):
                             code = int(m.group(1))
