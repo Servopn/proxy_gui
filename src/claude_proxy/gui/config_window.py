@@ -21,75 +21,83 @@ class ConfigWindow:
     def __init__(self, parent):
         self.window = tk.Toplevel(parent)
         self.window.title("系统配置")
-        self.window.geometry("650x550")
+        self.window.geometry("620x580")
         self.window.transient(parent)
         _center_window(self.window)
 
-        ttk.Label(self.window, text="系统配置参数", font=("Arial", 14, "bold")).pack(pady=10)
+        ttk.Label(self.window, text="系统配置", font=("Arial", 14, "bold")).pack(pady=(12, 4))
 
         # === 可调整参数区域 ===
-        editable = ttk.LabelFrame(self.window, text="可调整参数（修改后点击应用生效）")
-        editable.pack(fill=tk.X, padx=12, pady=6)
+        editable = ttk.LabelFrame(self.window, text="可调整参数")
+        editable.pack(fill=tk.BOTH, expand=True, padx=12, pady=(4, 2))
 
-        # 参数：变量名 / 标签 / 范围 / 配置键名
+        # 用 Canvas + Scrollbar 包裹内层 Frame，支持滚动
+        canvas = tk.Canvas(editable, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(editable, orient=tk.VERTICAL, command=canvas.yview)
+        self._scroll_frame = ttk.Frame(canvas)
+
+        self._scroll_frame.bind("<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=self._scroll_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=4, pady=4)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 4), pady=4)
+
+        # 鼠标滚轮支持
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        self.window.bind("<Destroy>", lambda e: canvas.unbind_all("<MouseWheel>"))
+
+        # 参数定义：(键名, 标签, 最小值, 最大值, 步长, config属性名, 后缀)
         self._editable_params = [
-            ("max_retry", "最大重试渠道数", 1, len(config.CHANNELS), 1, "MAX_RETRY_CHANNELS"),
-            ("pool_size", "连接池大小", 1, 100, 1, "MAX_POOL_SIZE"),
-            ("warmup", "渠道评分预热请求数", 1, 500, 10, "WARMUP_REQUESTS"),
-            ("min_ch", "渠道最少样本数", 1, 100, 1, "MIN_CHANNEL_REQUESTS"),
-            ("score_th", "评分模式最低平均分", 1, 100, 5, "SCORE_THRESHOLD"),
-            ("cooldown_ch", "渠道冷却上限", 1, 50, 1, "COOLDOWN_CHANNELS"),
-            ("model_warmup", "模型评分预热请求数", 1, 200, 10, "MODEL_WARMUP_REQUESTS"),
-            ("min_model", "模型最少样本数", 1, 50, 1, "MIN_MODEL_REQUESTS"),
-            ("cooldown_sec", "模型冷却时间(秒)", 5, 600, 10, "COOLDOWN_SECONDS"),
+            ("max_retry",   "最大重试渠道数",       1, len(config.CHANNELS), 1,  "MAX_RETRY_CHANNELS",     "个"),
+            ("pool_size",   "连接池大小",            1, 100,  1,  "MAX_POOL_SIZE",          "个"),
+            ("warmup",      "渠道评分预热请求数",    1, 500,  10, "WARMUP_REQUESTS",        "次"),
+            ("min_ch",      "渠道最少样本数",        1, 100,  1,  "MIN_CHANNEL_REQUESTS",   "次"),
+            ("score_th",    "评分模式最低平均分",    1, 100,  5,  "SCORE_THRESHOLD",        "%"),
+            ("cooldown_ch", "渠道冷却上限",          1, 50,   1,  "COOLDOWN_CHANNELS",      "个"),
+            ("model_warmup","模型评分预热请求数",    1, 200,  10, "MODEL_WARMUP_REQUESTS",  "次"),
+            ("min_model",   "模型最少样本数",        1, 50,   1,  "MIN_MODEL_REQUESTS",     "次"),
+            ("cooldown_sec","模型冷却时间",          5, 600,  10, "COOLDOWN_SECONDS",       "秒"),
         ]
 
         self._vars = {}
-        for i, (key, label, lo, hi, step, _) in enumerate(self._editable_params):
-            cur = getattr(config, key, None)
-            if cur is None:
-                # 映射名称到 config 属性
-                for attr_name in dir(config):
-                    if attr_name.upper() == self._editable_params[i][5]:
-                        cur = getattr(config, attr_name)
-                        break
-            # 直接取配置值
-            cur = getattr(config, self._editable_params[i][5])
+        for i, (key, label, lo, hi, step, attr, suffix) in enumerate(self._editable_params):
+            row_frame = ttk.Frame(self._scroll_frame)
+            row_frame.pack(fill=tk.X, padx=8, pady=2)
+
+            ttk.Label(row_frame, text=label, width=22, anchor="w").pack(side=tk.LEFT)
+
+            cur = getattr(config, attr)
             if isinstance(cur, float):
-                # 浮点数转成 0-100 百分比整数显示
-                display_val = int(cur * 100) if cur < 1 else int(cur)
+                display_val = int(cur * 100) if cur <= 1 else int(cur)
                 self._vars[key] = tk.StringVar(value=str(display_val))
-                ttk.Label(editable, text=label).grid(row=i, column=0, sticky="w", padx=8, pady=3)
-                sp = ttk.Spinbox(editable, from_=lo, to=hi, textvariable=self._vars[key], width=8)
-                sp.grid(row=i, column=1, padx=8)
             else:
                 self._vars[key] = tk.StringVar(value=str(cur))
-                ttk.Label(editable, text=label).grid(row=i, column=0, sticky="w", padx=8, pady=3)
-                sp = ttk.Spinbox(editable, from_=lo, to=hi, textvariable=self._vars[key], width=8)
-                sp.grid(row=i, column=1, padx=8)
 
-        # 应用按钮跨行
-        total_rows = len(self._editable_params)
-        ttk.Button(editable, text="应用", command=self._apply).grid(
-            row=0, column=2, rowspan=total_rows, padx=12, sticky="n")
+            sp = ttk.Spinbox(row_frame, from_=lo, to=hi, textvariable=self._vars[key], width=6)
+            sp.pack(side=tk.LEFT, padx=(4, 2))
+            ttk.Label(row_frame, text=suffix, width=3, anchor="w").pack(side=tk.LEFT)
+
+        # 应用按钮
+        btn_frame = ttk.Frame(editable)
+        btn_frame.pack(fill=tk.X, padx=12, pady=6)
+        ttk.Button(btn_frame, text="应用更改", command=self._apply, width=15).pack(side=tk.RIGHT)
 
         # === 只读参数区域 ===
         readonly = ttk.LabelFrame(self.window, text="只读参数")
-        readonly.pack(fill=tk.BOTH, expand=True, padx=12, pady=6)
+        readonly.pack(fill=tk.BOTH, padx=12, pady=(2, 12))
 
-        columns = ("param", "value", "description")
-        self.tree = ttk.Treeview(readonly, columns=columns, show="headings", height=6)
+        columns = ("param", "value")
+        self.tree = ttk.Treeview(readonly, columns=columns, show="headings", height=2)
         self.tree.heading("param", text="参数名")
         self.tree.heading("value", text="当前值")
-        self.tree.heading("description", text="说明")
-        self.tree.column("param", width=190)
-        self.tree.column("value", width=80, anchor="center")
-        self.tree.column("description", width=250)
+        self.tree.column("param", width=120, anchor="w")
+        self.tree.column("value", width=100, anchor="center")
 
-        tree_scroll = ttk.Scrollbar(readonly, orient=tk.VERTICAL, command=self.tree.yview)
-        self.tree.configure(yscrollcommand=tree_scroll.set)
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 2))
-        tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=4, pady=4)
 
         self._load_config()
 
@@ -97,20 +105,18 @@ class ConfigWindow:
         for item in self.tree.get_children():
             self.tree.delete(item)
         rows = [
-            ("总渠道数", len(config.CHANNELS), "当前渠道总数"),
-            ("模型池数量", len(model_pool.models), "自动模型可选数量"),
+            ("总渠道数", len(config.CHANNELS)),
+            ("模型池数量", len(model_pool.models)),
         ]
-        for param, value, description in rows:
-            self.tree.insert("", tk.END, values=(param, value, description))
+        for param, value in rows:
+            self.tree.insert("", tk.END, values=(param, value))
 
     def _apply(self):
         try:
             set_max_retry_channels(int(self._vars["max_retry"].get()))
             set_max_pool_size(int(self._vars["pool_size"].get()))
-            # 更新 config 中的可调参数
             config.WARMUP_REQUESTS = int(self._vars["warmup"].get())
             config.MIN_CHANNEL_REQUESTS = int(self._vars["min_ch"].get())
-            # SCORE_THRESHOLD 是浮点数，显示为 0-100 整数，转换回浮点
             config.SCORE_THRESHOLD = float(self._vars["score_th"].get()) / 100.0
             config.COOLDOWN_CHANNELS = int(self._vars["cooldown_ch"].get())
             config.MODEL_WARMUP_REQUESTS = int(self._vars["model_warmup"].get())
