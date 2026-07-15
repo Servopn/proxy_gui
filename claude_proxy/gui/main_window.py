@@ -220,8 +220,11 @@ class LogWindow:
                         # -> 之后的实际模型名
                         for m in re.finditer(r"->([\w.]+)", line):
                             highlights.append(("hl_model_after", m.start(1), m.end(1)))
-                        for m in re.finditer(r"HTTP=(\d{3})", line):
-                            highlights.append(("hl_http", m.start(1), m.end(1)))
+                        # HTTP 状态码高亮（3位数字，如 503/429/403/500）
+                        for m in re.finditer(r"\b(\d{3})\b", line):
+                            code = int(m.group(1))
+                            if code >= 400:
+                                highlights.append(("hl_http", m.start(1), m.end(1)))
                         for m in re.finditer(r"tokens=(\d+/\d+)", line):
                             highlights.append(("hl_token", m.start(1), m.end(1)))
                         highlights.sort(key=lambda x: x[1])
