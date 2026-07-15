@@ -209,9 +209,17 @@ class LogWindow:
                 if line:
                     mode = self._color_mode
 
+                    # 总是先插入不带 tag 的文本
+                    self.log_text.insert(tk.END, line + "\n")
+
+                    line_start = self.log_text.index("end -1 lines")
+                    line_end = self.log_text.index("end -1 lines lineend")
+                    import re
+                    line_num = line_start.split(".")[0]
+
                     # 方式1: 整行变色（mode=1 或 3 时）
-                    tag = None
                     if mode in (1, 3):
+                        tag = None
                         if "ERR" in line or "403" in line or "500" in line:
                             tag = "error"
                         elif "503" in line or "retry" in line or "SSL" in line or "429" in line:
@@ -224,35 +232,32 @@ class LogWindow:
                             tag = "info"
                         elif "TRACE" in line:
                             tag = "error"
-
-                    if tag:
-                        self.log_text.insert(tk.END, line + "\n", tag)
-                    else:
-                        self.log_text.insert(tk.END, line + "\n")
+                        if tag:
+                            self.log_text.tag_add(tag, line_start, line_end)
+                            self.log_text.tag_raise(tag)
 
                     # 方式2: 局部高亮（mode=2 或 3 时）
                     if mode in (2, 3):
-                        import re
-                        line_start = self.log_text.index("end -1 lines")
-                        line_num = line_start.split(".")[0]
-
                         # 模型名高亮
                         for m in re.finditer(r"model=([\w\-\.]+)", line):
                             start = f"{line_num}.{m.start(1)}"
                             end = f"{line_num}.{m.end(1)}"
                             self.log_text.tag_add("hl_model", start, end)
+                            self.log_text.tag_raise("hl_model")
 
                         # HTTP 状态码高亮
                         for m in re.finditer(r"HTTP=(\d{3})", line):
                             start = f"{line_num}.{m.start(1)}"
                             end = f"{line_num}.{m.end(1)}"
                             self.log_text.tag_add("hl_http", start, end)
+                            self.log_text.tag_raise("hl_http")
 
                         # token 数值高亮
                         for m in re.finditer(r"tokens=(\d+/\d+)", line):
                             start = f"{line_num}.{m.start(1)}"
                             end = f"{line_num}.{m.end(1)}"
                             self.log_text.tag_add("hl_token", start, end)
+                            self.log_text.tag_raise("hl_token")
 
                     self.log_text.see(tk.END)
 
