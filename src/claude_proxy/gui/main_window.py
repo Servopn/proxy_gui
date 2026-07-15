@@ -116,7 +116,7 @@ class LogWindow:
 
         ttk.Button(self.btn_frame, text="清空日志", command=self.clear_log, style="Btn.TButton").pack(side=tk.LEFT, padx=3)
         ttk.Button(self.btn_frame, text="隐藏到托盘", command=self.hide, style="Btn.TButton").pack(side=tk.LEFT, padx=3)
-        self.btn_color_mode = ttk.Button(self.btn_frame, text="着色:全部", command=self._cycle_color_mode, style="Btn.TButton")
+        self.btn_color_mode = ttk.Button(self.btn_frame, text="着色:整行", command=self._cycle_color_mode, style="Btn.TButton")
         self.btn_color_mode.pack(side=tk.LEFT, padx=3)
         ttk.Button(self.btn_frame, text="密钥管理", command=self.open_key_manager, style="Btn.TButton").pack(side=tk.LEFT, padx=3)
         ttk.Button(self.btn_frame, text="渠道状态", command=self.open_channel_status, style="Btn.TButton").pack(side=tk.LEFT, padx=3)
@@ -163,12 +163,11 @@ class LogWindow:
         set_force_proxy_auto(enabled)
 
     def _cycle_color_mode(self):
-        """循环切换着色模式"""
-        self._color_mode = (self._color_mode % 4) + 1
-        mode_names = {1: "整行", 2: "局部", 3: "全部", 4: "关闭"}
-        self.btn_color_mode.config(text=f"着色:{mode_names.get(self._color_mode, '全部')}")
+        """在整行变色和局部高亮之间切换"""
+        self._color_mode = 2 if self._color_mode == 1 else 1
+        mode_names = {1: "整行", 2: "局部"}
+        self.btn_color_mode.config(text=f"着色:{mode_names.get(self._color_mode, '整行')}")
         from claude_proxy.config import ENV_FILE
-        from claude_proxy.config import _ENV_PREFIX
         try:
             if ENV_FILE.exists():
                 lines = ENV_FILE.read_text(encoding="utf-8-sig").splitlines()
@@ -209,10 +208,10 @@ class LogWindow:
                 if line:
                     mode = self._color_mode
 
-                    # 方式2: 局部高亮优先（mode=2 或 3 时逐段插入）
-                    if mode in (2, 3):
-                        import re
-                        # 找到需要高亮的区间
+                    import re
+
+                    if mode == 2:
+                        # 局部高亮：逐段插入带 tag
                         highlights = []
                         for m in re.finditer(r"model=([\w\-\.]+)", line):
                             highlights.append(("hl_model", m.start(1), m.end(1)))
@@ -222,35 +221,7 @@ class LogWindow:
                             highlights.append(("hl_token", m.start(1), m.end(1)))
                         highlights.sort(key=lambda x: x[1])
 
-                        if highlights and mode == 3:
-                            # mode=3: 整行着色 + 局部高亮
-                            # 先判断整行 tag
-                            whole_tag = None
-                            if "ERR" in line or "403" in line or "500" in line:
-                                whole_tag = "error"
-                            elif "503" in line or "retry" in line or "SSL" in line or "429" in line:
-                                whole_tag = "retry"
-                            elif "OK" in line:
-                                whole_tag = "success"
-                            elif "REQ" in line or "AUTO" in line or "TEST" in line:
-                                whole_tag = "info"
-                            elif "TRACE" in line:
-                                whole_tag = "error"
-
-                            # 逐段插入：先插入整行内容（不带 tag），然后给非高亮区加整行 tag，高亮区加局部 tag
-                            self.log_text.insert(tk.END, line + "\n")
-                            line_start = self.log_text.index("end -1 lines")
-                            line_end = self.log_text.index("end -1 lines lineend")
-                            ln = line_start.split(".")[0]
-
-                            # 整行 tag
-                            if whole_tag:
-                                self.log_text.tag_add(whole_tag, line_start, line_end)
-                            # 局部高亮（后加，覆盖整行 tag）
-                            for htag, hstart, hend in highlights:
-                                self.log_text.tag_add(htag, f"{ln}.{hstart}", f"{ln}.{hend}")
-                        elif highlights:
-                            # mode=2: 仅局部高亮
+                        if highlights:
                             pos = 0
                             for htag, hstart, hend in highlights:
                                 if hstart > pos:
@@ -263,8 +234,8 @@ class LogWindow:
                         else:
                             self.log_text.insert(tk.END, line + "\n")
 
-                    # 方式1: 仅整行变色（mode=1 时）
-                    elif mode == 1:
+                    else:
+                        # mode=1: 整行变色
                         tag = None
                         if "ERR" in line or "403" in line or "500" in line:
                             tag = "error"
